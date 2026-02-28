@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tic Tac Toe</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #1a1a2e;
+    color: #eee;
+  }
+
+  h1 {
+    font-size: 2.4rem;
+    margin-bottom: 0.3rem;
+    letter-spacing: 0.1em;
+  }
+
+  #status {
+    font-size: 1.2rem;
+    margin-bottom: 1.2rem;
+    height: 1.8rem;
+    color: #aaa;
+  }
+
+  #board {
+    display: grid;
+    grid-template-columns: repeat(3, 120px);
+    grid-template-rows: repeat(3, 120px);
+    gap: 6px;
+  }
+
+  .cell {
+    background: #16213e;
+    border: none;
+    border-radius: 8px;
+    font-size: 3rem;
+    font-weight: 700;
+    color: #eee;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  .cell:hover:not(.taken) {
+    background: #1a1a4e;
+    transform: scale(1.04);
+  }
+
+  .cell.x { color: #e94560; }
+  .cell.o { color: #0f3460; }
+
+  .cell.win {
+    background: #e9456022;
+    animation: pulse 0.6s ease-in-out infinite alternate;
+  }
+
+  @keyframes pulse {
+    to { background: #e9456044; }
+  }
+
+  #restart {
+    margin-top: 1.4rem;
+    padding: 0.6rem 2rem;
+    font-size: 1rem;
+    border: 2px solid #e94560;
+    border-radius: 6px;
+    background: transparent;
+    color: #e94560;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+
+  #restart:hover {
+    background: #e94560;
+    color: #fff;
+  }
+
+  #score {
+    margin-top: 1rem;
+    font-size: 1rem;
+    color: #888;
+  }
+
+  #score span { color: #ccc; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>Tic Tac Toe</h1>
+<div id="status">Your turn (X)</div>
+<div id="board"></div>
+<button id="restart">Restart</button>
+<div id="score">X: <span id="sx">0</span> &nbsp; O: <span id="so">0</span> &nbsp; Draw: <span id="sd">0</span></div>
+
+<script>
+const WIN_LINES = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+let board, turn, gameOver, scores = { X: 0, O: 0, D: 0 };
+
+const $ = id => document.getElementById(id);
+const boardEl = $('board');
+const statusEl = $('status');
+
+function init() {
+  board = Array(9).fill('');
+  turn = 'X';
+  gameOver = false;
+  boardEl.innerHTML = '';
+  for (let i = 0; i < 9; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'cell';
+    btn.dataset.i = i;
+    btn.addEventListener('click', handleClick);
+    boardEl.appendChild(btn);
+  }
+  statusEl.textContent = "Your turn (X)";
+}
+
+function handleClick(e) {
+  if (gameOver) return;
+  const i = +e.target.dataset.i;
+  if (board[i]) return;
+
+  place(i, turn);
+
+  const winLine = checkWin(turn);
+  if (winLine) return endGame(turn, winLine);
+  if (board.every(c => c)) return endGame(null);
+
+  turn = turn === 'X' ? 'O' : 'X';
+  statusEl.textContent = `Your turn (${turn})`;
+}
+
+function place(i, mark) {
+  board[i] = mark;
+  const cell = boardEl.children[i];
+  cell.textContent = mark;
+  cell.classList.add(mark.toLowerCase(), 'taken');
+}
+
+function checkWin(mark) {
+  return WIN_LINES.find(line => line.every(i => board[i] === mark)) || null;
+}
+
+function endGame(winner, winLine) {
+  gameOver = true;
+  if (winner) {
+    statusEl.textContent = `${winner} wins!`;
+    winLine.forEach(i => boardEl.children[i].classList.add('win'));
+    scores[winner]++;
+  } else {
+    statusEl.textContent = "It's a draw!";
+    scores.D++;
+  }
+  $('sx').textContent = scores.X;
+  $('so').textContent = scores.O;
+  $('sd').textContent = scores.D;
+}
+
+$('restart').addEventListener('click', init);
+init();
+</script>
+</body>
+</html>
