@@ -1,8 +1,11 @@
 // New Recipe
 Router.on('/family/:id/recipes/new', async ({ id }) => {
   try {
-    const family = await API.get(`/api/families/${id}`);
-    Router.content.innerHTML = RecipeForm.buildForm(id, family.name, null);
+    const [family, members] = await Promise.all([
+      API.get(`/api/families/${id}`),
+      API.get(`/api/families/${id}/members`),
+    ]);
+    Router.content.innerHTML = RecipeForm.buildForm(id, family.name, null, members);
     RecipeForm.init();
   } catch (e) {
     Router.content.innerHTML = `<div class="error-msg">${e.message}</div>`;
@@ -12,11 +15,12 @@ Router.on('/family/:id/recipes/new', async ({ id }) => {
 // Edit Recipe
 Router.on('/family/:id/recipes/:rid/edit', async ({ id, rid }) => {
   try {
-    const [family, recipe] = await Promise.all([
+    const [family, recipe, members] = await Promise.all([
       API.get(`/api/families/${id}`),
       API.get(`/api/families/${id}/recipes/${rid}`),
+      API.get(`/api/families/${id}/members`),
     ]);
-    Router.content.innerHTML = RecipeForm.buildForm(id, family.name, recipe);
+    Router.content.innerHTML = RecipeForm.buildForm(id, family.name, recipe, members);
     RecipeForm.init(recipe);
   } catch (e) {
     Router.content.innerHTML = `<div class="error-msg">${e.message}</div>`;
@@ -26,7 +30,7 @@ Router.on('/family/:id/recipes/:rid/edit', async ({ id, rid }) => {
 const RecipeForm = {
   photoUrl: null,
 
-  buildForm(familyId, familyName, recipe) {
+  buildForm(familyId, familyName, recipe, members = []) {
     const isEdit = !!recipe;
     const title = isEdit ? 'Edit Recipe' : 'New Recipe';
     let ingredients = [''];
@@ -70,6 +74,13 @@ const RecipeForm = {
             <label>Tags (comma-separated)</label>
             <input type="text" id="rf-tags" placeholder="e.g. holiday, quick, vegan" value="${Router.escapeHtml(tags)}">
           </div>
+        </div>
+        <div class="form-group">
+          <label>Attributed to (family member)</label>
+          <select id="rf-attributed">
+            <option value="">None</option>
+            ${members.map(m => `<option value="${m.id}" ${isEdit && recipe.attributed_member_id == m.id ? 'selected' : ''}>${Router.escapeHtml(m.first_name)}${m.last_name ? ' ' + Router.escapeHtml(m.last_name) : ''}</option>`).join('')}
+          </select>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -178,6 +189,7 @@ const RecipeForm = {
         tags,
         photo: this.photoUrl,
         family_story: document.getElementById('rf-story').value || null,
+        attributed_member_id: document.getElementById('rf-attributed').value ? parseInt(document.getElementById('rf-attributed').value) : null,
       };
 
       try {

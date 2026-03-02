@@ -28,10 +28,15 @@ Router.on('/family/:id/recipes/:rid', async ({ id, rid }) => {
       html += `<img class="recipe-hero" src="${recipe.photo}" alt="${Router.escapeHtml(recipe.title)}">`;
     }
 
+    const attributedName = recipe.attributed_first_name
+      ? recipe.attributed_first_name + (recipe.attributed_last_name ? ' ' + recipe.attributed_last_name : '')
+      : null;
+
     html += `
       <div style="margin-bottom:20px">
         <span style="color:var(--text-light);font-family:-apple-system,sans-serif;font-size:0.9rem">
           by ${Router.escapeHtml(recipe.author_name)}
+          ${attributedName ? ` &middot; From <a href="#/family/${id}/members/${recipe.attributed_member_id}" style="color:var(--terracotta)">${Router.escapeHtml(attributedName)}</a>` : ''}
           ${recipe.category ? ' &middot; ' + Router.escapeHtml(recipe.category) : ''}
           &middot; Added ${new Date(recipe.created_at).toLocaleDateString()}
         </span>

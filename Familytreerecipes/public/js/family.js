@@ -104,6 +104,10 @@ Router.on('/family/:id/members', async ({ id }) => {
       API.get(`/api/families/${id}/users`)
     ]);
 
+    // Cache members so edit modal can look them up by ID
+    Family._membersCache = {};
+    members.forEach(m => Family._membersCache[m.id] = m);
+
     let html = `
       <div class="page-header">
         <h1>${Router.escapeHtml(family.name)} - Members</h1>
@@ -117,18 +121,26 @@ Router.on('/family/:id/members', async ({ id }) => {
           <div class="card-header"><h3>Family Tree Members</h3></div>
           ${members.length === 0
             ? '<p style="color:var(--text-light)">No members in the tree yet. Add family members to build your tree.</p>'
-            : members.map(m => `
+            : members.map(m => {
+              const initials = (m.first_name[0] + (m.last_name ? m.last_name[0] : '')).toUpperCase();
+              return `
               <div class="member-item">
-                <div class="member-info">
-                  <h4>${Router.escapeHtml(m.first_name)}${m.last_name ? ' ' + Router.escapeHtml(m.last_name) : ''}</h4>
-                  <p>${m.birth_year ? m.birth_year : ''}${m.death_year ? ' - ' + m.death_year : m.birth_year ? ' - present' : ''}${m.linked_user_name ? ' (linked: ' + Router.escapeHtml(m.linked_user_name) + ')' : ''}</p>
+                <div class="member-info" style="display:flex;align-items:center;gap:10px">
+                  ${m.profile_picture
+                    ? `<img class="avatar-sm" src="${m.profile_picture}" alt="">`
+                    : `<span class="avatar-initials-sm">${initials}</span>`
+                  }
+                  <div>
+                    <h4><a href="#/family/${id}/members/${m.id}" style="color:var(--text)">${Router.escapeHtml(m.first_name)}${m.last_name ? ' ' + Router.escapeHtml(m.last_name) : ''}</a></h4>
+                    <p>${m.birth_year ? m.birth_year : ''}${m.death_year ? ' - ' + m.death_year : m.birth_year ? ' - present' : ''}${m.linked_user_name ? ' (linked: ' + Router.escapeHtml(m.linked_user_name) + ')' : ''}</p>
+                  </div>
                 </div>
                 <div class="member-actions">
-                  <button class="btn btn-sm btn-secondary" onclick="Family.showEditMemberModal(${id}, ${JSON.stringify(JSON.stringify(m))})">Edit</button>
+                  <button class="btn btn-sm btn-secondary" onclick="Family.showEditMemberModal(${id}, ${m.id})">Edit</button>
                   <button class="btn btn-sm btn-secondary" onclick="Family.showRelationshipModal(${id}, ${m.id}, '${Router.escapeHtml(m.first_name).replace(/'/g, "\\'")}')">Relations</button>
                   <button class="btn btn-sm btn-danger" onclick="Family.deleteMember(${id}, ${m.id})">Del</button>
                 </div>
-              </div>`).join('')
+              </div>`}).join('')
           }
         </div>
         <div class="card">
@@ -138,7 +150,7 @@ Router.on('/family/:id/members', async ({ id }) => {
             : relationships.filter(r => r.type === 'parent_of' || (r.type !== 'parent_of' && r.from_member_id < r.to_member_id)).map(r => `
               <div class="member-item">
                 <div class="member-info">
-                  <h4>${Router.escapeHtml(r.from_first_name)} ${r.type.replace('_', ' ')} ${Router.escapeHtml(r.to_first_name)}</h4>
+                  <h4>${Router.escapeHtml(r.from_first_name)} ${TYPE_LABELS[r.type] || r.type.replace(/_/g, ' ')} ${Router.escapeHtml(r.to_first_name)}</h4>
                 </div>
                 <button class="btn btn-sm btn-danger" onclick="Family.deleteRelationship(${id}, ${r.from_member_id}, ${r.to_member_id}, '${r.type}')">Remove</button>
               </div>`).join('')
@@ -211,6 +223,15 @@ Router.on('/settings', async () => {
     Router.content.innerHTML = `<div class="error-msg">${e.message}</div>`;
   }
 });
+
+const TYPE_LABELS = {
+  parent_of: 'parent of',
+  spouse_of: 'spouse of',
+  ex_spouse_of: 'ex-spouse of',
+  sibling_of: 'sibling of',
+  half_sibling_of: 'half-sibling of',
+  step_sibling_of: 'step-sibling of',
+};
 
 // === Family Module ===
 const Family = {
@@ -329,13 +350,25 @@ const Family = {
     document.getElementById('invite-code').textContent = result.invite_code;
   },
 
+  _memberPhotoUrl: null,
+
   showAddMemberModal(familyId) {
+    this._memberPhotoUrl = null;
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
       <div class="modal">
         <h2>Add Family Member</h2>
         <form id="add-member-form">
+          <div class="form-group" style="text-align:center">
+            <label>Profile Picture</label>
+            <div class="member-photo-upload" id="member-photo-upload" onclick="document.getElementById('member-photo-input').click()">
+              <input type="file" id="member-photo-input" accept=".jpg,.jpeg,.png,.webp" style="display:none">
+              <div id="member-photo-preview">
+                <div class="avatar-initials-large" style="width:80px;height:80px;font-size:1.5rem;margin:0 auto;cursor:pointer">+</div>
+              </div>
+            </div>
+          </div>
           <div class="form-row">
             <div class="form-group">
               <label>First Name *</label>
@@ -369,6 +402,7 @@ const Family = {
       </div>`;
     document.body.appendChild(overlay);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    this._setupMemberPhotoInput();
     document.getElementById('add-member-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       try {
@@ -378,6 +412,7 @@ const Family = {
           birth_year: document.getElementById('member-birth').value ? parseInt(document.getElementById('member-birth').value) : null,
           death_year: document.getElementById('member-death').value ? parseInt(document.getElementById('member-death').value) : null,
           bio: document.getElementById('member-bio').value || null,
+          profile_picture: this._memberPhotoUrl,
         });
         overlay.remove();
         Router.resolve();
@@ -387,14 +422,29 @@ const Family = {
     });
   },
 
-  showEditMemberModal(familyId, memberJson) {
-    const m = JSON.parse(memberJson);
+  showEditMemberModal(familyId, memberId) {
+    const m = this._membersCache[memberId];
+    if (!m) return;
+    this._memberPhotoUrl = m.profile_picture || null;
+    const initials = (m.first_name[0] + (m.last_name ? m.last_name[0] : '')).toUpperCase();
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
       <div class="modal">
         <h2>Edit Member</h2>
         <form id="edit-member-form">
+          <div class="form-group" style="text-align:center">
+            <label>Profile Picture</label>
+            <div class="member-photo-upload" id="member-photo-upload" onclick="document.getElementById('member-photo-input').click()">
+              <input type="file" id="member-photo-input" accept=".jpg,.jpeg,.png,.webp" style="display:none">
+              <div id="member-photo-preview">
+                ${m.profile_picture
+                  ? `<img src="${m.profile_picture}" class="avatar-sm" style="width:80px;height:80px;cursor:pointer" alt="Photo">`
+                  : `<div class="avatar-initials-large" style="width:80px;height:80px;font-size:1.5rem;margin:0 auto;cursor:pointer">${initials}</div>`
+                }
+              </div>
+            </div>
+          </div>
           <div class="form-row">
             <div class="form-group">
               <label>First Name *</label>
@@ -427,6 +477,7 @@ const Family = {
       </div>`;
     document.body.appendChild(overlay);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    this._setupMemberPhotoInput();
     document.getElementById('edit-member-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       await API.put(`/api/families/${familyId}/members/${m.id}`, {
@@ -435,6 +486,7 @@ const Family = {
         birth_year: document.getElementById('em-birth').value ? parseInt(document.getElementById('em-birth').value) : null,
         death_year: document.getElementById('em-death').value ? parseInt(document.getElementById('em-death').value) : null,
         bio: document.getElementById('em-bio').value || null,
+        profile_picture: this._memberPhotoUrl,
       });
       overlay.remove();
       Router.resolve();
@@ -457,9 +509,18 @@ const Family = {
           <div class="form-group">
             <label>Relationship Type</label>
             <select id="rel-type">
-              <option value="parent_of">Parent of</option>
-              <option value="spouse_of">Spouse of</option>
-              <option value="sibling_of">Sibling of</option>
+              <optgroup label="Parental">
+                <option value="parent_of">Parent of</option>
+              </optgroup>
+              <optgroup label="Spousal">
+                <option value="spouse_of">Spouse of</option>
+                <option value="ex_spouse_of">Ex-Spouse of</option>
+              </optgroup>
+              <optgroup label="Sibling">
+                <option value="sibling_of">Sibling of</option>
+                <option value="half_sibling_of">Half-Sibling of</option>
+                <option value="step_sibling_of">Step-Sibling of</option>
+              </optgroup>
             </select>
           </div>
           <div class="form-group">
@@ -502,5 +563,20 @@ const Family = {
   async deleteRelationship(familyId, fromId, toId, type) {
     await API.del(`/api/families/${familyId}/relationships`, { from_member_id: fromId, to_member_id: toId, type });
     Router.resolve();
+  },
+
+  _setupMemberPhotoInput() {
+    document.getElementById('member-photo-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const preview = document.getElementById('member-photo-preview');
+      preview.innerHTML = '<p style="color:var(--text-light);font-size:0.85rem">Uploading...</p>';
+      try {
+        this._memberPhotoUrl = await API.upload(file);
+        preview.innerHTML = `<img src="${this._memberPhotoUrl}" class="avatar-sm" style="width:80px;height:80px;cursor:pointer" alt="Photo">`;
+      } catch (err) {
+        preview.innerHTML = `<p style="color:var(--danger);font-size:0.85rem">${err.message}</p>`;
+      }
+    });
   },
 };

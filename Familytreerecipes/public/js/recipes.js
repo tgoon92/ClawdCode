@@ -62,6 +62,7 @@ Router.on('/family/:id/recipes', async ({ id }) => {
               <h3>${Router.escapeHtml(r.title)}</h3>
               <div class="meta">
                 by ${Router.escapeHtml(r.author_name)}
+                ${r.attributed_first_name ? ' &middot; From ' + Router.escapeHtml(r.attributed_first_name + (r.attributed_last_name ? ' ' + r.attributed_last_name : '')) : ''}
                 ${r.category ? ' &middot; ' + Router.escapeHtml(r.category) : ''}
                 ${totalTime ? ' &middot; ' + totalTime + ' min' : ''}
               </div>

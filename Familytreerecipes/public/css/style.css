@@ -2,29 +2,29 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --cream: #FFF8F0;
-  --cream-dark: #F5EDE3;
-  --terracotta: #C1694F;
-  --terracotta-dark: #A3543D;
-  --terracotta-light: #E8A990;
-  --brown: #5C3D2E;
-  --brown-light: #8B6F5E;
-  --green: #6B8F5E;
-  --green-dark: #567348;
-  --text: #3A2E26;
-  --text-light: #7A6B60;
-  --border: #DDD0C4;
+  --cream: #F5F7F5;
+  --cream-dark: #E8EDE8;
+  --terracotta: #2D6A4F;
+  --terracotta-dark: #1B4332;
+  --terracotta-light: #74C69D;
+  --brown: #1B2A22;
+  --brown-light: #52796F;
+  --green: #40916C;
+  --green-dark: #2D6A4F;
+  --text: #1A1A2E;
+  --text-light: #6B7280;
+  --border: #D1D5DB;
   --white: #FFFFFF;
   --danger: #C0392B;
   --danger-light: #E74C3C;
-  --shadow: 0 2px 8px rgba(92, 61, 46, 0.1);
-  --shadow-lg: 0 4px 16px rgba(92, 61, 46, 0.15);
-  --radius: 8px;
-  --radius-lg: 12px;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --radius: 10px;
+  --radius-lg: 16px;
 }
 
 body {
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: var(--cream);
   color: var(--text);
   line-height: 1.6;
@@ -137,6 +137,7 @@ a:hover { color: var(--terracotta-dark); }
   background: var(--brown);
   color: var(--white);
   padding: 20px 0;
+  padding-top: calc(20px + env(safe-area-inset-top, 0px));
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -185,6 +186,7 @@ a:hover { color: var(--terracotta-dark); }
   flex: 1;
   margin-left: 260px;
   padding: 24px 32px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   max-width: 1200px;
 }
 
@@ -570,6 +572,115 @@ a:hover { color: var(--terracotta-dark); }
   font-family: -apple-system, sans-serif;
 }
 
+/* === Member Detail === */
+.member-detail-layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.member-profile-card {
+  text-align: center;
+  position: sticky;
+  top: 24px;
+}
+.member-avatar-large {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid var(--terracotta-light);
+  margin: 0 auto;
+  display: block;
+}
+.avatar-initials-large {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--terracotta), var(--green));
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  font-weight: 700;
+  margin: 0 auto;
+}
+.member-years {
+  color: var(--text-light);
+  font-size: 0.9rem;
+  margin-top: 4px;
+  font-family: -apple-system, sans-serif;
+}
+.member-bio {
+  margin-top: 12px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+.member-linked {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--text-light);
+  font-family: -apple-system, sans-serif;
+}
+.member-detail-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.member-rel-item, .member-recipe-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--cream-dark);
+  color: var(--text);
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.member-rel-item:last-child, .member-recipe-item:last-child {
+  border-bottom: none;
+}
+.member-rel-item:hover, .member-recipe-item:hover {
+  background: var(--cream);
+  margin: 0 -12px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+}
+.avatar-sm {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.avatar-initials-sm {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--terracotta);
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.rel-label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-light);
+  font-family: -apple-system, sans-serif;
+}
+.recipe-item-meta {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-light);
+  font-family: -apple-system, sans-serif;
+}
+
 /* === Responsive === */
 @media (max-width: 768px) {
   .hamburger { display: block; }
@@ -581,4 +692,6 @@ a:hover { color: var(--terracotta-dark); }
   .recipe-meta { gap: 8px; }
   .search-bar { flex-direction: column; }
   .auth-container { margin: 16px; padding: 24px; }
+  .member-detail-layout { grid-template-columns: 1fr; }
+  .member-profile-card { position: static; }
 }

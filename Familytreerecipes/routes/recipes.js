@@ -34,9 +34,11 @@ router.get('/:fid/recipes', authenticate, requireFamilyMember, (req, res) => {
   const total = db.prepare(countSql).get(...params).total;
 
   const sql = `
-    SELECT r.*, u.display_name as author_name
+    SELECT r.*, u.display_name as author_name,
+      am.first_name as attributed_first_name, am.last_name as attributed_last_name
     FROM recipes r
     JOIN users u ON u.id = r.author_id
+    LEFT JOIN family_members am ON am.id = r.attributed_member_id
     WHERE ${where.join(' AND ')}
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
@@ -64,9 +66,11 @@ router.get('/:fid/recipes', authenticate, requireFamilyMember, (req, res) => {
 // Get single recipe
 router.get('/:fid/recipes/:id', authenticate, requireFamilyMember, (req, res) => {
   const recipe = db.prepare(`
-    SELECT r.*, u.display_name as author_name
+    SELECT r.*, u.display_name as author_name,
+      am.first_name as attributed_first_name, am.last_name as attributed_last_name
     FROM recipes r
     JOIN users u ON u.id = r.author_id
+    LEFT JOIN family_members am ON am.id = r.attributed_member_id
     WHERE r.id = ? AND r.family_id = ?
   `).get(req.params.id, req.params.fid);
   if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
@@ -82,12 +86,12 @@ router.get('/:fid/recipes/:id', authenticate, requireFamilyMember, (req, res) =>
 
 // Create recipe
 router.post('/:fid/recipes', authenticate, requireFamilyMember, (req, res) => {
-  const { title, description, ingredients, instructions, category, prep_time, cook_time, servings, photo, family_story, tags } = req.body;
+  const { title, description, ingredients, instructions, category, prep_time, cook_time, servings, photo, family_story, tags, attributed_member_id } = req.body;
   if (!title) return res.status(400).json({ error: 'Title is required' });
 
   const result = db.prepare(`
-    INSERT INTO recipes (family_id, author_id, title, description, ingredients, instructions, category, prep_time, cook_time, servings, photo, family_story)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO recipes (family_id, author_id, title, description, ingredients, instructions, category, prep_time, cook_time, servings, photo, family_story, attributed_member_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     req.params.fid, req.user.id, title,
     description || null,
@@ -95,7 +99,8 @@ router.post('/:fid/recipes', authenticate, requireFamilyMember, (req, res) => {
     JSON.stringify(instructions || []),
     category || null,
     prep_time || null, cook_time || null, servings || null,
-    photo || null, family_story || null
+    photo || null, family_story || null,
+    attributed_member_id || null
   );
 
   // Handle tags
@@ -123,11 +128,11 @@ router.put('/:fid/recipes/:id', authenticate, requireFamilyMember, (req, res) =>
     return res.status(403).json({ error: 'Only the author or admin can edit this recipe' });
   }
 
-  const { title, description, ingredients, instructions, category, prep_time, cook_time, servings, photo, family_story, tags } = req.body;
+  const { title, description, ingredients, instructions, category, prep_time, cook_time, servings, photo, family_story, tags, attributed_member_id } = req.body;
 
   db.prepare(`
     UPDATE recipes SET title = ?, description = ?, ingredients = ?, instructions = ?, category = ?,
-      prep_time = ?, cook_time = ?, servings = ?, photo = ?, family_story = ?, updated_at = datetime('now')
+      prep_time = ?, cook_time = ?, servings = ?, photo = ?, family_story = ?, attributed_member_id = ?, updated_at = datetime('now')
     WHERE id = ? AND family_id = ?
   `).run(
     title || recipe.title,
@@ -140,6 +145,7 @@ router.put('/:fid/recipes/:id', authenticate, requireFamilyMember, (req, res) =>
     servings !== undefined ? servings : recipe.servings,
     photo !== undefined ? photo : recipe.photo,
     family_story !== undefined ? family_story : recipe.family_story,
+    attributed_member_id !== undefined ? attributed_member_id : recipe.attributed_member_id,
     req.params.id, req.params.fid
   );
 

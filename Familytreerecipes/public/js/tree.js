@@ -47,10 +47,10 @@ const TreeView = {
   scale: 1,
   panX: 0,
   panY: 0,
-  NODE_W: 160,
-  NODE_H: 60,
+  NODE_W: 200,
+  NODE_H: 80,
   H_GAP: 40,
-  V_GAP: 80,
+  V_GAP: 90,
   svg: null,
   group: null,
   dragging: false,
@@ -62,13 +62,29 @@ const TreeView = {
     this.panX = 0;
     this.panY = 0;
 
-    // Build adjacency: find parent_of relationships
+    // Build adjacency
     const parentOf = relationships.filter(r => r.type === 'parent_of');
     const spouseOf = relationships.filter(r => r.type === 'spouse_of' && r.from_member_id < r.to_member_id);
+    const exSpouseOf = relationships.filter(r => r.type === 'ex_spouse_of' && r.from_member_id < r.to_member_id);
 
     // Build a map of member id -> member
     const memberMap = {};
     members.forEach(m => memberMap[m.id] = m);
+
+    // Build multi-partner map: partnerMap[id] = [{ id, type }, ...]
+    const partnerMap = {};
+    const addPartner = (a, b, type) => {
+      if (!partnerMap[a]) partnerMap[a] = [];
+      if (!partnerMap[a].some(p => p.id === b)) partnerMap[a].push({ id: b, type });
+    };
+    spouseOf.forEach(r => {
+      addPartner(r.from_member_id, r.to_member_id, 'spouse_of');
+      addPartner(r.to_member_id, r.from_member_id, 'spouse_of');
+    });
+    exSpouseOf.forEach(r => {
+      addPartner(r.from_member_id, r.to_member_id, 'ex_spouse_of');
+      addPartner(r.to_member_id, r.from_member_id, 'ex_spouse_of');
+    });
 
     // Find children for each member
     const childrenOf = {};
@@ -79,31 +95,28 @@ const TreeView = {
       hasParent.add(r.to_member_id);
     });
 
+    // Merge children from all partners
+    const getChildren = (id) => {
+      const kids = new Set(childrenOf[id] || []);
+      const partners = partnerMap[id] || [];
+      partners.forEach(p => {
+        (childrenOf[p.id] || []).forEach(k => kids.add(k));
+      });
+      return [...kids];
+    };
+
     // Find roots (no parents)
     let roots = members.filter(m => !hasParent.has(m.id)).map(m => m.id);
 
-    // If a root has a spouse that is also a root, group them
-    const spouseMap = {};
-    spouseOf.forEach(r => {
-      spouseMap[r.from_member_id] = r.to_member_id;
-      spouseMap[r.to_member_id] = r.from_member_id;
-    });
-
-    // Remove spouse duplicates from roots - keep the one with lower id
+    // Remove partner duplicates from roots - keep the one with lower id
     const rootSet = new Set(roots);
     roots = roots.filter(id => {
-      const spouse = spouseMap[id];
-      if (spouse && rootSet.has(spouse) && spouse < id) return false;
+      const partners = partnerMap[id] || [];
+      for (const p of partners) {
+        if (rootSet.has(p.id) && p.id < id) return false;
+      }
       return true;
     });
-
-    // Merge children from both spouses
-    const getChildren = (id) => {
-      const kids = new Set(childrenOf[id] || []);
-      const spouse = spouseMap[id];
-      if (spouse) (childrenOf[spouse] || []).forEach(k => kids.add(k));
-      return [...kids];
-    };
 
     // Layout: assign (x, y) to each node via recursive tree layout
     const positions = {};
@@ -111,17 +124,20 @@ const TreeView = {
 
     const layout = (nodeId, depth) => {
       const children = getChildren(nodeId);
-      // Filter children to only those not yet positioned (avoid duplicates)
       const unpositioned = children.filter(c => !positions[c]);
 
+      // Gather unpositioned partners (current spouses first, then ex-spouses)
+      const partners = (partnerMap[nodeId] || [])
+        .filter(p => !positions[p.id])
+        .sort((a, b) => (a.type === 'spouse_of' ? 0 : 1) - (b.type === 'spouse_of' ? 0 : 1));
+
       if (unpositioned.length === 0) {
+        // Place the node and its partners as a unit
         positions[nodeId] = { x: nextX, y: depth };
-        // Place spouse next to the node
-        const spouse = spouseMap[nodeId];
-        if (spouse && !positions[spouse]) {
+        partners.forEach(p => {
           nextX++;
-          positions[spouse] = { x: nextX, y: depth };
-        }
+          positions[p.id] = { x: nextX, y: depth };
+        });
         nextX++;
         return;
       }
@@ -133,10 +149,14 @@ const TreeView = {
       const childXs = unpositioned.map(c => positions[c].x);
       const centerX = (Math.min(...childXs) + Math.max(...childXs)) / 2;
 
-      const spouse = spouseMap[nodeId];
-      if (spouse && !positions[spouse]) {
-        positions[nodeId] = { x: centerX - 0.5, y: depth };
-        positions[spouse] = { x: centerX + 0.5, y: depth };
+      if (partners.length > 0) {
+        // Center the unit (node + partners) above children
+        const unitWidth = partners.length; // number of gaps
+        const unitStart = centerX - unitWidth / 2;
+        positions[nodeId] = { x: unitStart, y: depth };
+        partners.forEach((p, i) => {
+          positions[p.id] = { x: unitStart + i + 1, y: depth };
+        });
       } else {
         positions[nodeId] = { x: centerX, y: depth };
       }
@@ -144,15 +164,19 @@ const TreeView = {
 
     // Layout each root tree
     if (roots.length === 0 && members.length > 0) {
-      // No hierarchy, just lay out in a grid
       members.forEach((m, i) => {
         positions[m.id] = { x: i % 5, y: Math.floor(i / 5) };
       });
     } else {
       roots.forEach(r => layout(r, 0));
-      // Position any orphans not yet laid out
+      // Second pass: position any orphaned partners next to their already-placed partner
       members.forEach(m => {
-        if (!positions[m.id]) {
+        if (positions[m.id]) return;
+        const partners = partnerMap[m.id] || [];
+        const placedPartner = partners.find(p => positions[p.id]);
+        if (placedPartner) {
+          positions[m.id] = { x: positions[placedPartner.id].x + 1, y: positions[placedPartner.id].y };
+        } else {
           positions[m.id] = { x: nextX, y: 0 };
           nextX++;
         }
@@ -178,7 +202,7 @@ const TreeView = {
     // Build SVG
     let svgContent = `<g id="tree-group">`;
 
-    // Draw connections
+    // Draw parent connections
     parentOf.forEach(r => {
       if (!coords[r.from_member_id] || !coords[r.to_member_id]) return;
       const from = coords[r.from_member_id];
@@ -203,6 +227,35 @@ const TreeView = {
       svgContent += `<line class="tree-spouse-connector" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
     });
 
+    // Draw ex-spouse connections with divorce mark
+    exSpouseOf.forEach(r => {
+      if (!coords[r.from_member_id] || !coords[r.to_member_id]) return;
+      const from = coords[r.from_member_id];
+      const to = coords[r.to_member_id];
+      const x1 = from.x + this.NODE_W;
+      const y1 = from.y + this.NODE_H / 2;
+      const x2 = to.x;
+      const y2 = to.y + this.NODE_H / 2;
+      svgContent += `<line class="tree-ex-spouse-connector" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+      // Divorce mark (red X) at midpoint
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      svgContent += `<text class="tree-divorce-mark" x="${mx}" y="${my}">&#10005;</text>`;
+    });
+
+    // Define clip paths for avatars
+    svgContent += '<defs>';
+    members.forEach(m => {
+      if (!coords[m.id]) return;
+      const c = coords[m.id];
+      const avatarR = 22;
+      const cx = c.x + 30;
+      const cy = c.y + this.NODE_H / 2;
+      svgContent += `<clipPath id="avatar-clip-${m.id}"><circle cx="${cx}" cy="${cy}" r="${avatarR}"/></clipPath>`;
+    });
+    svgContent += `<filter id="node-shadow"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.12"/></filter>`;
+    svgContent += '</defs>';
+
     // Draw nodes
     members.forEach(m => {
       if (!coords[m.id]) return;
@@ -210,11 +263,29 @@ const TreeView = {
       const isDeceased = m.death_year != null;
       const name = `${m.first_name}${m.last_name ? ' ' + m.last_name : ''}`;
       const years = m.birth_year ? `${m.birth_year}${m.death_year ? ' - ' + m.death_year : ''}` : '';
+      const initials = (m.first_name[0] + (m.last_name ? m.last_name[0] : '')).toUpperCase();
+      const avatarR = 22;
+      const avatarCx = c.x + 30;
+      const avatarCy = c.y + this.NODE_H / 2;
+      const textX = c.x + 62;
+
       svgContent += `
-        <g class="tree-node ${isDeceased ? 'deceased' : ''}" data-id="${m.id}" onclick="TreeView.showTooltip(event, ${JSON.stringify(JSON.stringify({ name, years, bio: m.bio || '' }))})">
-          <rect x="${c.x}" y="${c.y}" width="${this.NODE_W}" height="${this.NODE_H}"/>
-          <text class="node-name" x="${c.x + this.NODE_W / 2}" y="${c.y + 25}" text-anchor="middle">${this.truncate(name, 18)}</text>
-          <text class="node-years" x="${c.x + this.NODE_W / 2}" y="${c.y + 44}" text-anchor="middle">${years}</text>
+        <g class="tree-node ${isDeceased ? 'deceased' : ''}" data-id="${m.id}" data-family-id="${familyId}"
+           onclick="location.hash='#/family/${familyId}/members/${m.id}'" style="cursor:pointer">
+          <title>${this.escapeXml(name)}${years ? ' (' + years + ')' : ''}${m.bio ? ' - ' + m.bio : ''}</title>
+          <rect x="${c.x}" y="${c.y}" width="${this.NODE_W}" height="${this.NODE_H}" filter="url(#node-shadow)"/>`;
+
+      if (m.profile_picture) {
+        svgContent += `<image href="${m.profile_picture}" x="${avatarCx - avatarR}" y="${avatarCy - avatarR}" width="${avatarR * 2}" height="${avatarR * 2}" clip-path="url(#avatar-clip-${m.id})" preserveAspectRatio="xMidYMid slice"/>`;
+        svgContent += `<circle cx="${avatarCx}" cy="${avatarCy}" r="${avatarR}" fill="none" stroke="var(--terracotta-light)" stroke-width="2"/>`;
+      } else {
+        svgContent += `<circle cx="${avatarCx}" cy="${avatarCy}" r="${avatarR}" fill="#2D6A4F"/>`;
+        svgContent += `<text x="${avatarCx}" y="${avatarCy + 5}" text-anchor="middle" fill="white" font-size="12" font-weight="600" pointer-events="none">${initials}</text>`;
+      }
+
+      svgContent += `
+          <text class="node-name" x="${textX}" y="${c.y + 32}" text-anchor="start">${this.truncate(name, 16)}</text>
+          <text class="node-years" x="${textX}" y="${c.y + 50}" text-anchor="start">${years}</text>
         </g>`;
     });
 
@@ -229,21 +300,8 @@ const TreeView = {
     return str.length > max ? str.substring(0, max - 1) + '...' : str;
   },
 
-  showTooltip(event, dataJson) {
-    const data = JSON.parse(dataJson);
-    // Remove existing tooltip
-    document.querySelectorAll('.tree-tooltip').forEach(t => t.remove());
-    const tooltip = document.createElement('div');
-    tooltip.className = 'tree-tooltip';
-    tooltip.innerHTML = `<h4>${Router.escapeHtml(data.name)}</h4>
-      ${data.years ? `<p>${data.years}</p>` : ''}
-      ${data.bio ? `<p style="margin-top:4px">${Router.escapeHtml(data.bio)}</p>` : ''}`;
-    const container = document.getElementById('tree-container');
-    const rect = container.getBoundingClientRect();
-    tooltip.style.left = (event.clientX - rect.left + 10) + 'px';
-    tooltip.style.top = (event.clientY - rect.top + 10) + 'px';
-    container.appendChild(tooltip);
-    setTimeout(() => tooltip.remove(), 3000);
+  escapeXml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
   },
 
   setupPanZoom() {

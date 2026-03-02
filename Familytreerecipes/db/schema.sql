@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS family_members (
   birth_year INTEGER,
   death_year INTEGER,
   bio TEXT,
+  profile_picture TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -39,7 +40,7 @@ CREATE TABLE IF NOT EXISTS relationships (
   family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
   from_member_id INTEGER NOT NULL REFERENCES family_members(id) ON DELETE CASCADE,
   to_member_id INTEGER NOT NULL REFERENCES family_members(id) ON DELETE CASCADE,
-  type TEXT NOT NULL CHECK(type IN ('parent_of', 'spouse_of', 'sibling_of')),
+  type TEXT NOT NULL CHECK(type IN ('parent_of', 'spouse_of', 'sibling_of', 'step_sibling_of', 'half_sibling_of', 'ex_spouse_of')),
   UNIQUE(family_id, from_member_id, to_member_id, type)
 );
 
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS recipes (
   servings INTEGER,
   photo TEXT,
   family_story TEXT,
+  attributed_member_id INTEGER REFERENCES family_members(id),
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
